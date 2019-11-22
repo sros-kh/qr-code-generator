@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Document</title>
+
+    <script type="text/javascript" src="js/jquery.min.js"></script>
+    <script type="text/javascript" src="js/jquery.qrcode.js"></script>
+    <script type="text/javascript" src="js/qrcode.js"></script>
+    <script src="js/pdf-lib.min.js"></script>
+
+    <style>
+        #qrcode {
+            width: 160px;
+            height: 160px;
+            margin-top: 15px;
+        }
+    </style>
+
+</head>
+
+<body>
+    <center>
+        <table>
+            <tr>
+                <td>Doc id</td>
+                <td><input type="text" name="doc-id" id="doc-id"></td>
+            </tr>
+            <tr>
+                <td>Doc name</td>
+                <td><input type="text" name="doc-name" id="doc-name"></td>
+            </tr>
+            <tr>
+                <td>Doc file</td>
+                <td><input type="file" name="doc-file" id="doc-file"></td>
+            </tr>
+            <tr>
+                <td><input type="button" value="Submit" id="save-doc"></td>
+                <td><input type="button" value="Cancel"></td>
+            </tr>
+        </table>
+        <br><br>
+
+
+    </center>
+
+    <div hidden id="qrcodeCanvas"></div>
+
+
+    <script type="text/javascript">
+        $(document).ready(function () {
+
+            function makeQRCode(docId) {
+                $('#qrcodeCanvas').qrcode({
+                    text: "http://localhost:8080/api/v1/documents/" + docId,
+                    render: "canvas",
+                    width: 100,
+                    height: 100,
+                    background: "#ffffff",
+                    foreground: "#000000"
+                });
+            }
+
+            /*
+            * existingPdfBytes: ArrayBuffer
+            * pngImageBytes: "png",["string", Uint8Array, ArrayBuffer]
+            */
+            async function embedQRCode(existingPdfBytes, pngImageBytes) {
+
+                // const url = 'https://pdf-lib.js.org/assets/with_update_sections.pdf'
+                // const existingPdfBytes = await fetch(url).then(res => res.arrayBuffer())
+
+                const pdfDoc = await PDFLib.PDFDocument.load(existingPdfBytes)
+
+                const pngImage = await pdfDoc.embedPng(pngImageBytes)
+
+                const pngDims = pngImage.scale(0.5)
+
+                const pages = pdfDoc.getPages()
+                const page = pages[0]
+
+                page.drawImage(pngImage, {
+                    x: 2,
+                    y: page.getHeight() / 1.15,
+                    width: 100,
+                    height: 100,
+                })
+
+                // const pdfBytes = await pdfDoc.save()
+                const pdfDataUri = await pdfDoc.saveAsBase64({ dataUri: true });
+                document.getElementById('pdf').src = pdfDataUri;
+            }
+
+            const toBase64 = file => new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = error => reject(error);
+            });
+
+            $('#save-doc').click(async function () {
+                const file = document.querySelector('#doc-file').files[0];
+                console.log(file);
+                
+                const file2 = $('#doc-file')[0];
+                console.log(file2);
+                
+                const existingPdfBytes = await toBase64(file);
+
+                const docId = $('#doc-id').val();
+                const docName = $('#doc-name').val();
+
+                const data = {
+                    'docId': docId,
+                    'doName': docName
+                }
+
+                $.ajax({
+                    type: "POST",
+                    crossDomain: true,
+                    crossOrigin: true,
+                    url: 'localhost:8080/api/v1/documents',
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    data: JSON.stringify(data),
+                    success: function (data, txtStatus, jqXhr) {
+                        if (txtStatus == 200) {
+                            makeQRCode(docId);
+                            embedQRCode(existingPdfBytes, $("#qrcodeCanvas canvas")[0].toDataURL())
+                        }
+                    },
+                    failure: function (errMsg) {
+                        alert(errMsg);
+                    }
+
+                })
+            })
+        });
+    </script>
+</body>
+
+</html>
